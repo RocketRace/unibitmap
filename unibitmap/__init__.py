@@ -1,6 +1,6 @@
 '''Unibitmap
 
-TODO
+TODO description
 '''
 
 from __future__ import annotations

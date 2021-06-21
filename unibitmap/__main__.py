@@ -29,6 +29,7 @@ def generate_code(rows: list[str], *, name: str, tabs: bool = False, font: str |
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
+        prog="unibitmap",
         description="Converts images to Python programs containing unicode bitmap art which then evaluates to the original image",
         add_help=False,
     )
