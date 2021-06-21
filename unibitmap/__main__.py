@@ -40,8 +40,9 @@ if __name__ == "__main__":
     parser.add_argument("--width", "-w", default=None, type=int, help="Rescaled width of generated bitmap")
     parser.add_argument("--font", "-f", default=None, type=str, help="Specify the font used for bitmap generation")
     parser.add_argument("--name", "-n", default=None, type=str, help="Specify the class name in resulting file")
+    parser.add_argument("--reduce-colors", "-r", default=0, type=int, help="Reduce colors by a factor of 2 ** n")
     parser.add_argument("--tabs", "-t", action="store_true", help="Use tabs instead of 4 spaces in resulting file")
-    parser.add_argument("--generate-mapping", "-g", action="store_true", help="Generate or regenerate a color mapping for the current font, if one is missing (this operation can be expensive!)")
+    parser.add_argument("--generate-mapping", action="store_true", help="Generate or regenerate a color mapping for the current font, if one is missing (this operation can be expensive!)")
 
     args = parser.parse_args()
 
@@ -61,6 +62,6 @@ if __name__ == "__main__":
             name = name[:i] + "_" + name[i + 1:]
     name = name.title() or DEFAULT_NAME
 
-    mapping = get_mapping(args.font)
+    mapping = get_mapping(args.font, generate_if_missing=args.generate_mapping)
     px = Pixels.from_image(Image.open(args.file), width=args.width, height=args.height)
-    out.write(generate_code(px.to_unicode(mapping), name=name, tabs=args.tabs, font=args.font))
+    out.write(generate_code(px.to_unicode(mapping, reduce_bits=args.reduce_colors), name=name, tabs=args.tabs, font=args.font))

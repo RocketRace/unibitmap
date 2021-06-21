@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     Color = int
     ColorMapping = dict[str, Color]
 
-DEFAULT_FONT_NAME = "NotoSansCJKjp-Regular"
+DEFAULT_FONT_NAME = "NotoSansCJKsc-Regular"
 FONT_PATH = os.path.join("unibitmap", "mappings")
 
 FILE_HEADER = """# Pixel color mapping, auto-generated using {0}
@@ -31,16 +31,16 @@ def get_mapping(font: str | None = None, generate_if_missing: bool = False) -> C
     '''
     if font is None:
         font = DEFAULT_FONT_NAME
-    font += ".py"
+    mapping_path = font + ".py"
     try:
-        with open(os.path.join(FONT_PATH, font)) as fp:
+        with open(os.path.join(FONT_PATH, mapping_path)) as fp:
             # This can still segfault/oom for malicious input.
             return ast.literal_eval(fp.read())
-    except ImportError:
+    except FileNotFoundError as e:
         if generate_if_missing:
             return dump_font_colors(font, FONT_PATH)
         else:
-            raise FileNotFoundError(f"The font file {font} was not found in {FONT_PATH}")
+            raise FileNotFoundError(f"The font file {font} was not found in {FONT_PATH}") from e
 
 def closest_pixel(mapping: ColorMapping, color: int) -> str:
     '''Finds the closest unicode character for the given color value in [0, 256).'''
@@ -60,6 +60,9 @@ def normalize_dedup_sort(colors: ColorMapping) -> ColorMapping:
     
     Returns the updated color mapping.
     '''
+    if len(colors) == 0:
+        return colors
+
     peak = max(colors.values())
     offset = min(colors.values())
     scale = 255 / (peak - offset)
@@ -77,12 +80,19 @@ def normalize_dedup_sort(colors: ColorMapping) -> ColorMapping:
     out.sort(key=lambda x: x[1])
     return dict(out)
 
-def resolve_font_face(path: str) -> Face:
+def resolve_font_face(path: str, *, name_only: bool = False) -> Face:
     '''Finds the `FontTools.ttLib.TTFont` with the given name,
     from the OS supported paths. Supports most major platforms.
     '''
     # here we are back in cross-platform compatibility purgatory
     try:
+        if name_only:
+            for root, _, names in os.walk(os.path.curdir):
+                for name in names:
+                    if name_only and os.path.splitext(name)[0] == path:
+                        return Face(os.path.join(root, name))
+                    elif name == path:
+                        return Face(os.path.join(root, name))
         return Face(path)
     except ft_errors.FT_Exception as exc:
         # "cannot open resource"
@@ -105,7 +115,9 @@ def resolve_font_face(path: str) -> Face:
             for directory in options:
                 for root, _, names in os.walk(directory):
                     for name in names:
-                        if name == path:
+                        if name_only and os.path.splitext(name)[0] == path:
+                            return Face(os.path.join(root, name))
+                        elif name == path:
                             return Face(os.path.join(root, name))
         raise FileNotFoundError
             
@@ -119,7 +131,7 @@ def is_fullwidth_identifier(char: str) -> bool:
         unicodedata.is_normalized("NFKC", char)
     )
 
-def generate_colors(path: str, scale: int = 16) -> ColorMapping:
+def generate_colors(path: str, *, scale: int = 16, name_only: bool = False) -> ColorMapping:
     '''Generates a mapping of fullwidth identifier characters and colors
     using font at the given path. Resulting colors are normalized to the [0, 256) range,
     and deduplicated + sorted by color.
@@ -128,7 +140,7 @@ def generate_colors(path: str, scale: int = 16) -> ColorMapping:
     However, higher values are much slower to compute. Furthermore, the relative
     increase in quality tends to plateau quickly, as anti-aliasing has diminishing returns.
     '''
-    face = resolve_font_face(path)
+    face = resolve_font_face(path, name_only=name_only)
     face.set_pixel_sizes(width=scale, height=scale)
     colors = {}
     for (c, i) in face.get_chars():
@@ -147,10 +159,13 @@ def generate_colors(path: str, scale: int = 16) -> ColorMapping:
                     colors[char] = sum(bitmap.buffer) // (scale ** 2)
     return normalize_dedup_sort(colors)
 
-def dump_font_colors(font_path: str, out_prefix: str, scale: int = 16) -> ColorMapping:
+def dump_font_colors(font: str, out_prefix: str, scale: int = 16) -> ColorMapping:
     '''Generates a color mapping for a font and dumps it into the specified directory.'''
-    colors = generate_colors(font_path, scale)
-    font_name, _ = os.path.splitext(os.path.basename(font_path))
+    root, end = os.path.split(font)
+    font_name, ext = os.path.splitext(end)
+    colors = generate_colors(font, scale=scale, name_only=root == ext == "")
+    if colors == {}:
+        raise ValueError("Font has no valid characters")
     out_path = f"{font_name}.py"
     if out_prefix:
         out_path = os.path.join(out_prefix, out_path)

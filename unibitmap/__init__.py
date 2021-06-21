@@ -80,11 +80,13 @@ class Pixels:
         '''Returns the underlying image instance.'''
         return self.img
     
-    def to_unicode(self, mapping: ColorMapping) -> list[str]:
+    def to_unicode(self, mapping: ColorMapping, *, reduce_bits: int = 0) -> list[str]:
         '''Converts the underlying image into a list of unicode strings.'''
         width, height = self.img.size
         flat = list(self.img.getdata())
-        return ["".join(closest_pixel(mapping, flat[y * width + x]) for x in range(width)) for y in range(height)]
+        mask = (255 << reduce_bits) & 255
+        print(mask)
+        return ["".join(closest_pixel(mapping, flat[y * width + x] & mask) for x in range(width)) for y in range(height)]
 
 class Namespace(dict):
     '''Hack to hook into namespace access in the class body.
