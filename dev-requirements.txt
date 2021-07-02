@@ -1,0 +1,3 @@
+Pillow>=8.2
+freetype-py>=2.2
+numpy
