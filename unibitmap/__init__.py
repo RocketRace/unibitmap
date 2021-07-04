@@ -5,16 +5,19 @@ TODO description
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping
 
+import numpy as np
 from PIL import Image
 
-from .mappings import get_mapping, closest_pixel
+from .mappings import Colors, get_mapping, is_fullwidth_identifier
 
 if TYPE_CHECKING:
-    from .mappings import ColorMapping
+    UnicodeGrid = np.ndarray[tuple[Any, Any], np.dtype[np.unicode_]]
 
 __all__ = ("Bitmap",)
+
+# get_mapping("/Users/Olivia/Library/Fonts/NotoSansCJKsc-Regular.otf", generate_if_missing=True)
 
 class Pixels:
     '''The internal representation of pixel bitmaps, wrapping `PIL.Image.Image`.'''
@@ -43,50 +46,32 @@ class Pixels:
             size = width, img.height * width // img.width 
         else:
             size = img.size
-        return cls(img.resize(size).convert("L"))
+        return cls(img.convert("RGB").resize(size))
 
     @classmethod
-    def from_unicode(cls, mapping: ColorMapping, rows: Sequence[str], *, ignore_unknown=False, pad_rows=False) -> Pixels:
+    def from_unicode(cls, mapping: Colors, grid: UnicodeGrid, *, ignore_unknown=False) -> Pixels:
         '''Constructs a `Pixels` instance from unicode pixel data.
-        
-        If `pad_rows` is `False` (the defaults), raises `ValueError` if the elements of `rows` are different in length.
-        Otherwise, rows are padded to fit the largest row in `rows`.
         
         If `ignore_unknown` is `False` (the default), raises `ValueError` for unknown characters in the strings.
         Otherwise, unknown characters are interpreted as black pixels.
         '''
-        
-        height = len(rows)
-        width = len(rows[0])
-        for row in rows:
-            if len(row) != width:
-                if not pad_rows:
-                    raise ValueError("Inconsistent list lengths")
-                if len(row) > width:
-                    width = len(row)
-        
-        img = Image.new("L", (width, height))
-
-        if ignore_unknown:
-            img.putdata([0 if mapping.get(c) is None else mapping[c] for row in rows for c in row])
-        else:
-            try:
-                img.putdata([mapping[c] for row in rows for c in row])
-            except KeyError as e:
-                raise ValueError(f"Unrecognized character `{e.args[0]}`")
-        return cls(img)
+        width, height = grid.shape
+        return cls(
+            Image.fromarray(
+                mapping.get_colors(grid, ignore_unknown=ignore_unknown).reshape((width, height, 3)),
+                mode="RGB"
+            )
+        )
 
     def to_image(self) -> Image.Image:
         '''Returns the underlying image instance.'''
         return self.img
     
-    def to_unicode(self, mapping: ColorMapping, *, reduce_bits: int = 0) -> list[str]:
+    def to_unicode(self, mapping: Colors) -> UnicodeGrid:
         '''Converts the underlying image into a list of unicode strings.'''
         width, height = self.img.size
-        flat = list(self.img.getdata())
-        mask = (255 << reduce_bits) & 255
-        print(mask)
-        return ["".join(closest_pixel(mapping, flat[y * width + x] & mask) for x in range(width)) for y in range(height)]
+        arr = np.asarray(self.img).reshape((width * height, 3))
+        return mapping.get_chars(arr).reshape((height, width))
 
 class Namespace(dict):
     '''Hack to hook into namespace access in the class body.
@@ -94,18 +79,17 @@ class Namespace(dict):
     This is the class through which unicode bitmaps are read into pixel data.
     '''
     parent: type[Meta]
-    mapping: ColorMapping
+    mapping: Colors
     @classmethod
-    def with_mapping(cls, mapping: ColorMapping, parent: type[Meta]) -> Namespace:
+    def with_parent(cls, parent: type[Meta]) -> Namespace:
         self = cls()
         self.parent = parent
-        self.mapping = mapping
         return self
     
     def __missing__(self, key: str):
         # this is "unconventional"
-        if all(c in self.mapping for c in key):
-            self.parent.rows.append(key)
+        if all(is_fullwidth_identifier(c) for c in key):
+            self.parent.rows.append(list(key))
             return None
         raise KeyError(key)
 
@@ -119,15 +103,14 @@ class Meta(type):
     @classmethod
     def __prepare__(cls, name: str, bases: tuple[type, ...], *, font: str | None = None, **kwargs: Any) -> Mapping[str, Any]:
         cls.rows.clear()
-        return Namespace.with_mapping(get_mapping(font), cls)
+        return Namespace.with_parent(cls)
 
     def __new__(cls, name: str, bases: tuple[type, ...], ns: dict[str, Any], *, font: str | None = None, **kwargs: Any) -> Meta | Image.Image:
         if len(bases) == 0:
             return super().__new__(cls, name, bases, ns)
         else:
             # this is "unconventional"
-            return Pixels.from_unicode(get_mapping(font), cls.rows).to_image()
-
+            return Pixels.from_unicode(get_mapping(font), np.array(cls.rows)).to_image()
 class Bitmap(metaclass=Meta):
     '''The "base class" from which bitmap images are generated.
     Its subclasses are parsed as unicode art bitmap images.
