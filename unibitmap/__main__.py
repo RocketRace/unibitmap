@@ -20,7 +20,8 @@ DEFAULT_NAME = "My" + Bitmap.__name__
 
 FONT_KWARG = ', font="{0}"'
 
-CODE_FORMAT = """from {0} import {1}
+CODE_FORMAT = """# -*- coding: utf-8 -*-
+from {0} import {1}
 
 class {{0}}({1}{{1}}):
 {{2}}
