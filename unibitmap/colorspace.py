@@ -8,7 +8,8 @@ import math
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Literal, TypeVar
 
 import numpy as np
-from scipy import optimize, spatial
+from scipy import spatial
+from matplotlib import path
 
 np.seterr(divide='ignore')
 
@@ -132,73 +133,9 @@ def color_delta(a: Int2Vec, b: Int2Vec) -> float:
     '''
     return math.dist(a, b)
 
-def ray_intersection(point: Int2Vec, a: Int2Vec, b: Int2Vec) -> bool | None:
-    '''Does a horizontal ray from the point intersect the edge defined by two endpoints?
-    
-    Returns a boolean if the ray intersects with the edge. Returns None if the point is on the edge.
-    '''
-    x = point[0]
-    y = point[1]
-    a_x = a[0]
-    a_y = a[1]
-    b_x = b[0]
-    b_y = b[1]
-    
-    # Degenerate case
-    # This only occurs when the entire gamut is a single point
-    # => said point is only inside the gamut
-    if a_x == b_x and a_y == b_y:
-        if a_x == x and a_y == y:
-            return None
-        else:
-            return False
-
-    # On the endpoints => inside the polygon
-    if (a_x == x and a_y == y) or (b_x == x and b_y == y):
-        return None
-
-    # Bounding box
-    if a_y > b_y:
-        top = a_y
-        bottom = b_y
-    else:
-        top = b_y
-        bottom = a_y
-    if a_x > b_x:
-        right = a_x
-        left = b_x
-    else:
-        right = b_x
-        left = a_x
-
-    # Between the y values
-    # This inequality has to be inclusive on one end (doesn't matter which)
-    # to avoid inaccuracies in reporting
-    if bottom <= y < top:
-        intersection = left + (right - left) / (top - bottom) * (top - y)
-        # Overlap
-        if x == intersection:
-            return None
-        if x < intersection:
-            return True
-
-    # On the same horizontal / vertical:
-    # In the edge => In the polygon
-    # Else, does not intersect
-    if y == top == bottom:
-        if left < x < right:
-            return None
-    
-    if x == left == right:
-        if bottom < y < top:
-            return None
-
-    return False
-
 class Gamut:
     '''Represents a color gamut in CbCr space. Its edges represent a convex polygon.'''
-    def __init__(self, edges: Edges, points: Int2Vecs) -> None:
-        self.edges = edges
+    def __init__(self, points: Int2Vecs) -> None:
         self.points = points
         # Gamut bounding box
         axes = self.points.T
@@ -208,6 +145,9 @@ class Gamut:
         max_y = axes[1].max()
         self.max_x = 127 if max_x == 127 else max_x + 1
         self.max_y = 127 if max_y == 127 else max_y + 1
+        self.size_hint = min(128, max(math.dist([0, 0], point) for point in points))
+        # Efficient polygon lookup
+        self.path = path.Path(points)
 
     @classmethod
     def from_rgb_points(cls, outer_points: Iterable[Int3Vec]) -> Gamut:
@@ -216,27 +156,19 @@ class Gamut:
         This converts the points into CbCr space, then into the edges of the polygon.
         '''
         points = points_as_cbcr(outer_points)
-        edges = np.array([
-            # pairs of consecutive points
-            [p0, p1] for p0, p1 in zip(points, np.roll(points, -1, axis=0))
-        ])
-        return cls(edges, points)
+        return cls(points)
 
     @property
     def area(self) -> int:
-        '''How many pixels are encompassed by the gamut'''
+        '''How many pixels are approximately encompassed by the gamut'''
         return (self.max_x - self.min_y) * (self.max_y - self.min_y)
 
-    def __contains__(self, point: Int2Vec) -> bool:
-        # Using the raycasting method to solve the point-in-polygon problem
-        count = 0
-        for edge in self.edges:
-            result = ray_intersection(point, edge[0], edge[1])
-            if result is None:
-                return True
-            else:
-                count += result
-        return count % 2 == 1
+    def filter_points(self, points: Int2Vecs) -> Int2Vecs:
+        '''Filters points based on whether they're contained inside the gamut.
+        
+        Returns the updated array.
+        '''
+        return points[self.path.contains_points(points)]
 
 class Optimizer:
     '''Optimization!
@@ -256,6 +188,8 @@ class Optimizer:
         # approximate initial distance (works best for close-to-square gamuts)
         self.distance = self.approximate_distance()
         self.points = np.array([])
+        gap = min(15, max(1, self.gamut.area))
+        self.sample_points = self.get_sample_points(gap)
         self.tree = None
 
     def approximate_distance(self):
@@ -267,7 +201,7 @@ class Optimizer:
         that fits inside the gamut
         '''
         # compute an upper bound for the width & height of the grid
-        size_hint = min(128, max(math.dist([0, 0], point) for point in self.gamut.points))
+        size_hint = self.gamut.size_hint
         unit_width = self.distance
         unit_height = self.distance * np.sqrt(3)/2
         
@@ -295,11 +229,11 @@ class Optimizer:
         # make sure to keep the (0, 0) row untouched
         epsilon_x = unit_width / 2
         epsilon_y = unit_height / 2
-        origin_indices = [
-            i for i, (x, y) in enumerate(grid)
-            if abs(x) < epsilon_x and abs(y) < epsilon_y
-        ]
-        shift_offset = origin_indices[0] + 1
+        origin_index = np.nonzero(
+              (abs(grid[:, 0]) < epsilon_x) 
+            & (abs(grid[:, 1]) < epsilon_y)
+        )[0][0]
+        shift_offset = origin_index + 1
 
         grid[shift_offset % 2::2, 0] += unit_width / 2
 
@@ -308,7 +242,7 @@ class Optimizer:
             [math.sin(self.angle), math.cos(self.angle)]
         ])
 
-        grid = np.array([rot.dot(point) for point in grid])
+        grid = rot.dot(grid.T).T
 
         # points outside the color space
         grid = grid[
@@ -320,9 +254,7 @@ class Optimizer:
 
         # deduplication is necessary due to rounding
         points = self.points = np.unique(
-            np.array([
-                point for point in grid.round().astype('int8') if point in self.gamut
-            ]),
+            self.gamut.filter_points(grid.round().astype('int8')),
             axis=0
         )
         self.tree = spatial.cKDTree(points) # type: ignore
@@ -367,7 +299,7 @@ class Optimizer:
         self.angle, self.distance = minimum = min(samples.items(), key=lambda a: a[1])[0]
         return minimum
 
-    def get_arrangement_points(self) -> Generator[tuple[tuple[int, int, int], tuple[int, int, int]], None, None]:
+    def get_arrangement(self) -> Generator[tuple[tuple[int, int, int], tuple[int, int, int]], None, None]:
         '''Get the packing points in (RGB, YCbCr) format (this is typically final)'''
         for point in self.get_packing_points():
             ycbcr = (self.luma, point[0], point[1])
@@ -379,16 +311,22 @@ class Optimizer:
         '''Number of arranged points currently within the gamut'''
         return len(self.points)
 
-    def sample_points(self, gap: int) -> Generator[Int2Vec, None, None]:
+    def get_sample_points(self, gap: int) -> Int2Vecs:
         '''Grid of points within the gamut with `gap` spaces between
         each other in the Cb and Cr axes. `gap` should be positive.
+
+        Only returns points inside the gamut.
         '''
-        yield from self.gamut.points
-        yield from np.mgrid[
-            self.gamut.min_x : self.gamut.max_x : gap,
-            self.gamut.min_y : self.gamut.max_y : gap
-        ].reshape(2,-1).T
-    
+        return np.vstack((
+            self.gamut.points, 
+            self.gamut.filter_points(
+                np.mgrid[
+                    self.gamut.min_x : self.gamut.max_x : gap,
+                    self.gamut.min_y : self.gamut.max_y : gap
+                ].reshape(2,-1).T
+            )
+        ))
+
     def debug(self):
         '''Render the current simulation state'''
         from PIL import Image
@@ -405,10 +343,7 @@ class Optimizer:
         '''Sample points in a grid, returning the maximal distance between
         some point and its closest neighbor in `self.points`.
         '''
-        gap = min(15, max(1, self.gamut.area))
-        dd, _ = self.tree.query( # type: ignore
-            np.array([point for point in self.sample_points(gap) if point in self.gamut])
-        )
+        dd, _ = self.tree.query(self.sample_points)  # type: ignore
         return np.mean(dd)
 
 def optimize_points(luma: int, n: int) -> Generator[tuple[tuple[int, int, int], tuple[int, int, int]], None, None]:
@@ -417,5 +352,4 @@ def optimize_points(luma: int, n: int) -> Generator[tuple[tuple[int, int, int], 
     '''
     opt = Optimizer(luma, n)
     opt.optimize()
-    print(luma, n)
-    return opt.get_arrangement_points()
+    return opt.get_arrangement()

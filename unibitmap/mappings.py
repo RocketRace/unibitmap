@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sys
 import unicodedata
-from typing import TYPE_CHECKING, BinaryIO
+from typing import Any, TYPE_CHECKING, BinaryIO
 
 import numpy as np
 from freetype import FT_LOAD_FLAGS, Face, ft_errors
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     LightnesssMapping = dict[str, Lightness]
     CharRgbMapping = dict[str, Color]
     YcbcrCharMapping = dict[Color, str]
+    ColorArray = np.ndarray[Any, np.dtype[np.uint8]]
+    CharArray = np.ndarray[Any, np.dtype[np.unicode_]]
 
 DEFAULT_FONT_NAME = "NotoSansCJKsc-Regular"
 FONT_PATH = os.path.join("unibitmap", "mappings")
@@ -77,7 +79,7 @@ class Colors:
             file.write(bytes((y, cb, cr)))
         file.flush()
 
-    def get_colors(self, char_grid: np.ndarray, *, ignore_unknown: bool = False) -> np.ndarray:
+    def get_colors(self, char_grid: CharArray, *, ignore_unknown: bool = False) -> ColorArray:
         '''Return an array of colors associated with `char_grid`. 
         
         If `ignore_unknown` is True, unknown chars are replaced with `(0, 0, 0)`.
@@ -91,7 +93,7 @@ class Colors:
             except KeyError as e:
                 raise ValueError(f"Unrecognized character `{e.args[0]}`")
 
-    def get_chars(self, rgb_points: np.ndarray) -> np.ndarray:
+    def get_chars(self, rgb_points: ColorArray) -> CharArray:
         '''Return an array of characters that are closest to the colors specified in `rgb_points`'''
         ycbcr_points = RGB_TO_YCBCR_TRANSFORM.dot(rgb_points.T).T
         # A change in lightness is twice as significant as chrominances

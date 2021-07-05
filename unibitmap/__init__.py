@@ -15,9 +15,7 @@ from .mappings import Colors, get_mapping, is_fullwidth_identifier
 if TYPE_CHECKING:
     UnicodeGrid = np.ndarray[tuple[Any, Any], np.dtype[np.unicode_]]
 
-__all__ = ("Bitmap",)
-
-# get_mapping("/Users/Olivia/Library/Fonts/NotoSansCJKsc-Regular.otf", generate_if_missing=True)
+__all__ = ("Bitmap", "Pixels")
 
 class Pixels:
     '''The internal representation of pixel bitmaps, wrapping `PIL.Image.Image`.'''
