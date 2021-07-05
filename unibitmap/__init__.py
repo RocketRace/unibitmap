@@ -1,6 +1,6 @@
 '''Unibitmap
 
-This Python module provides an API for converting between RGB images and executiable unicode art.
+This Python module provides an API for converting between RGB images and executable unicode art.
 
 For the command-line interface, see `python3 -m unibitmap --help`.
 

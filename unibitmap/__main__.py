@@ -40,8 +40,8 @@ def generate_code(rows: UnicodeGrid, *, name: str, tabs: bool = False, font: str
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="unibitmap",
-        description="Converts images to unicode-art python scripts, evaluating to the original image",
+        prog="python3 -m unibitmap",
+        description="Encodes images into executable character art which can be evaluated into the original image",
         add_help=False,
     )
     parser.add_argument("file", type=argparse.FileType("rb"), help="File to read image data from")
