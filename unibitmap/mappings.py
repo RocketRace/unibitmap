@@ -177,7 +177,7 @@ def resolve_font_face(path: str, *, name_only: bool = False) -> Face:
                 options.extend([
                     "/Library/Fonts",
                     "/System/Library/Fonts",
-                    os.path.expanduser("~/Library/Fonts")
+                    # os.path.expanduser("~/Library/Fonts")
                 ])
             elif sys.platform == "win32":
                 options.append(os.path.join(os.environ["WINDIR"], "fonts"))
@@ -190,10 +190,11 @@ def resolve_font_face(path: str, *, name_only: bool = False) -> Face:
             for directory in options:
                 for root, _, names in os.walk(directory):
                     for name in names:
-                        print(os.path.splitext(name)[0])
-                        if name_only and os.path.splitext(name)[0] == path:
-                            return Face(os.path.join(root, name))
-                        elif name == path:
+                        if name_only:
+                            left = unicodedata.normalize("NFKC", os.path.splitext(name)[0])
+                        else:
+                            left = unicodedata.normalize("NFKC", name)
+                        if left == unicodedata.normalize("NFKC", path):
                             return Face(os.path.join(root, name))
         raise FileNotFoundError
             
