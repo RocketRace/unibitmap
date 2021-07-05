@@ -53,6 +53,8 @@ from .mappings import Colors, get_mapping, is_fullwidth_identifier
 if TYPE_CHECKING:
     UnicodeGrid = np.ndarray[tuple[Any, Any], np.dtype[np.unicode_]]
 
+__version__ = "0.1.0"
+
 class Pixels:
     '''The internal representation of pixel bitmaps, wrapping `PIL.Image.Image`.'''
     def __init__(self, img: Image.Image) -> None:

@@ -2,9 +2,11 @@
 
 *A Python module & command-line interface for converting between RGB images and executable unicode art*
 
+(image here)
+
 ## Usage
 
-First install the required dependencies using `python3 -m pip install -r requirements.txt`. The interface is then accessible through `python -m unibitmap [options]`.
+Install the module using `python3 -m pip install git+https://github.com/RocketRace/unibitmap`. The interface is then accessible through `python -m unibitmap [options]`.
 
 This help output is available through `python3 -m unibitmap --help`.
 
