@@ -1,4 +1,7 @@
-'''Command-line interface for converting images to Unibitmap python files'''
+'''Command-line interface for converting images to Unibitmap python files.
+
+For detailed help output, see `python3 -m unibitmap --help`.
+'''
 
 from __future__ import annotations
 

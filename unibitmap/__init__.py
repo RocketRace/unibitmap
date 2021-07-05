@@ -1,6 +1,44 @@
 '''Unibitmap
 
-TODO description
+This Python module provides an API for converting between RGB images and executiable unicode art.
+
+For the command-line interface, see `python3 -m unibitmap --help`.
+
+The module exposes the `Bitmap` class intended for general use.
+The `Pixels` class is also available, for more programmatic access to Unibitmap features.
+
+Unibitmap's primary goal is to create a textual encoding for image data that is both valid 
+Python as well as visually similar to the image it encodes (akin to ASCII art). The project
+initially sparked by an interest in using Python's metaclass system and name lookup semantics
+in order to store arbitrary data into identifiers.
+
+Unibitmap defines an encoding and decoding scheme based on characters in a given font. Encoding
+converts an image into executable unicode art, and relies on a `color -> character` mapping,
+where the characters for missing colors are approximated using a weighted nearest-neighbor search.
+Decoding art into an image relies on the reverse `character -> color` mapping, ignoring or raising
+an error on unknown characters. The encoding-decoding process is visualized below:
+
+
+@========@     (color -> character)    @============@      (character -> color)     @========@
+[        ]        +-----------+        [ Executable ]        +-------------+        [        ]
+[ Source ] -------| Unibitmap |------> [ character  ] -------| Python      |------> [ Output ]
+[ image  ] -------| CLI       |------> [ art        ] -------| interpreter |------> [ image  ]
+[        ]        +-----------+        [            ]        +-------------+        [        ]
+@========@      (Lossy conversion)     @============@      (Lossless conversion)    @========@
+                        ^                                            ^
+                        |        +-------------------------+         |
+                        +--------| Font-generated mappings |---------+
+                                 +-------------------------+
+
+Both encoding and decoding mappings depend on a font file, used to determine the lightness 
+of characters. If multiple characters share the same lightness, they are each given
+unique colors with that given lightness. Consequently, a font with more supported characters
+provides a greater color range for the resulting mappings. Unibitmap ships with a default mapping
+generated from the Noto Sans font, supporting a vast quantity of CJK characters.
+
+Unibitmap executable character art is perfectly valid Python, requiring only the `unibitmap` module
+to be imported. Furthermore, as each bitmap is bound to a class scope, this can be used to include 
+inline RGB images within Python scripts. (I pray that nobody does this in a serious project.) 
 '''
 
 from __future__ import annotations
@@ -14,8 +52,6 @@ from .mappings import Colors, get_mapping, is_fullwidth_identifier
 
 if TYPE_CHECKING:
     UnicodeGrid = np.ndarray[tuple[Any, Any], np.dtype[np.unicode_]]
-
-__all__ = ("Bitmap", "Pixels")
 
 class Pixels:
     '''The internal representation of pixel bitmaps, wrapping `PIL.Image.Image`.'''
@@ -109,9 +145,11 @@ class Meta(type):
         else:
             # this is "unconventional"
             return Pixels.from_unicode(get_mapping(font), np.array(cls.rows)).to_image()
+
 class Bitmap(metaclass=Meta):
     '''The "base class" from which bitmap images are generated.
     Its subclasses are parsed as unicode art bitmap images.
+    See the module-level documentation for more information.
     
     Subclassing `Bitmap` will yield instances of `PIL.Image.Image` rather than new classes. 
     This is due to the unconventional (see: "hacky") use of metaclasses, and is thus likely unsupported
