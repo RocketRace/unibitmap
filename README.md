@@ -2,7 +2,7 @@
 
 *A Python module & command-line interface for converting between RGB images and executable unicode art*
 
-(image here)
+![Demo image](./demo.jpg?raw=true)
 
 ## Usage
 
