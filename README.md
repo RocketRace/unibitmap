@@ -39,8 +39,6 @@ The `Pixels` class is also available, for more programmatic access to Unibitmap 
 
 * `Bitmap`: The "base class" from which bitmap images are generated. Its subclasses are parsed as executable character art. This class should only ever be subclassed, never accessed directly.
 
-*TODO further documentation*
-
 ## Rationale
 
 Unibitmap's primary goal is to create a textual encoding for image data that is both valid Python as well as visually similar to the image it encodes (akin to ASCII art). The project initially sparked by an interest in using Python's metaclass system and name lookup semantics in order to store arbitrary data into identifiers. An example is shown below:
